@@ -75,7 +75,50 @@ class Decoder(nn.Module):
         return img
 
 
+class Specific(nn.Module):
+
+    def __init__(self, img_shape, specific_size):
+        super(Specific, self).__init__()
+
+        # specific module
+        self.specific = nn.Sequential(
+            nn.Linear(int(np.prod(img_shape)), specific_size),
+            #nn.ReLU(inplace=True),
+        )
+
+    def forward(self, imgs):
+        x = self.specific(imgs.view(imgs.shape[0], -1))
+
+        return x
+
 class Classifier(nn.Module):
+
+    def __init__(self,
+                 latent_shape,
+                 specific_shape,
+                 n_classes,
+                 classification_n_hidden=40):
+        super(Classifier, self).__init__()
+
+        self.relu = nn.ReLU(inplace=True)
+
+        self.classifier_layer = nn.Sequential(
+            nn.Linear(specific_shape + latent_shape, classification_n_hidden),
+            nn.ReLU(inplace=True),
+        )
+
+        self.output = nn.Linear(classification_n_hidden, n_classes)
+
+    def forward(self, discriminative, invariant):
+        discriminative = self.relu(discriminative)
+        x = self.classifier_layer(torch.cat([discriminative, invariant],
+                                            dim=1))
+        logits = self.output(x)
+
+        return logits
+
+
+class IRCLClassifier(nn.Module):
 
     def __init__(self, img_shape, invariant_n_hidden, specific_n_hidden,
                  classification_n_hidden, n_classes):
