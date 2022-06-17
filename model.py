@@ -122,7 +122,7 @@ class IRCLClassifier(nn.Module):
 
     def __init__(self, img_shape, invariant_n_hidden, specific_n_hidden,
                  classification_n_hidden, n_classes):
-        super(Classifier, self).__init__()
+        super(IRCLClassifier, self).__init__()
 
         # specific module
         self.specific = nn.Sequential(
