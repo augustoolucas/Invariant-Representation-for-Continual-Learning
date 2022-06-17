@@ -5,8 +5,6 @@ import numpy as np
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import copy
-from scipy.misc import imsave
-from scipy.misc import imresize
 
 def get_train_loader(train_dataset,batch_size):
     train_loader = DataLoader(
