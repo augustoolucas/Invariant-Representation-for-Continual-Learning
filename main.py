@@ -13,6 +13,7 @@ import glob
 import os
 import sys
 import itertools
+import random
 
 from model import *
 from tqdm import tqdm
@@ -21,25 +22,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
+from sklearn.manifold import TSNE
 import data_utils
 import plot_utils
 
 cuda = True if torch.cuda.is_available() else False
 Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 
-class ContrastiveLoss():
-    def __init__(self, m=2.0):
-        #super(ContrastiveLoss).__init__()  # pre 3.3 syntax
-        self.m = m  # margin or radius
-
-    def __call__(self, y1, y2, d=1):
-        # d = 1 means y1 and y2 are supposed to be same
-        # d = 0 means y1 and y2 are supposed to be different
-        euc_dist = nn.functional.pairwise_distance(y1, y2)
-
-        delta = (1-d)*self.m + (-1**(1-d))*euc_dist  # sort of reverse distance
-        delta = torch.clamp(delta, min=0.0, max=None)
-        return torch.mean(torch.pow(delta, 2))  # mean over all rows
 
 def parse_args():
     desc = "Pytorch implementation of Learning Invariant Representation for CL (IRCL) on the Split MNIST benchmark"
@@ -162,42 +151,75 @@ def evaluate(encoder, specific, classifier, task_id, device, task_test_loader):
 
     return 100. * correct_class / float(n)
 
+
+class ContrastiveLoss():
+    def __init__(self, m=2.0):
+        self.m = m  # margin or radius
+
+    def __call__(self, y1, y2, d=1):
+        # d = 1 means y1 and y2 are supposed to be same
+        # d = 0 means y1 and y2 are supposed to be different
+        euc_dist = nn.functional.pairwise_distance(y1, y2)
+
+        delta = (1-d)*self.m + (-1**(1-d))*euc_dist  # sort of reverse distance
+        delta = torch.clamp(delta, min=0.0, max=None)
+
+        return torch.mean(torch.pow(delta, 2))  # mean over all rows
+
+
 def train(args, optimizer_cvae, optimizer_S, optimizer_C, encoder, decoder, specific, classifer, train_loader, test_loader, curr_task_labels, task_id, device):
     ## loss ##
     pixelwise_loss = torch.nn.MSELoss(reduction='sum')
     classification_loss = nn.CrossEntropyLoss()
-    contrastive_loss = ContrastiveLoss()
+    contrastive_loss = ContrastiveLoss(m=2)
     encoder.train()
     decoder.train()
     specific.train()
     classifer.train()
 
     for epoch in range(args.num_epochs * 2):
-        for batch_idx, (data, target) in enumerate(train_loader):
+        representations = []
+        labels = []
+        for data, target in train_loader:
             specific.zero_grad()
             data, target = data.to(device), target.to(device)
-
-            target_pairs = itertools.product(target, repeat=2)
-
-            pairwise_labels = [t1 == t2 for t1, t2 in target_pairs]
-            pairwise_labels = torch.Tensor(pairwise_labels).type(torch.uint8)
+            labels.extend(target.tolist())
 
             specific_representation = specific(data.view(data.shape[0], -1))
+            representations.extend(specific_representation.tolist())
+            idxs = itertools.product(list(range(data.size(0))), repeat=2)
+            idxs = list(idxs)
+            random.shuffle(idxs)
+            idxs = np.asarray(idxs)
 
-            idxs = itertools.product(list(range(data.size(0))),
-                                     repeat=2)
+            pairwise_labels = (target[idxs[:, 0]] == target[idxs[:, 1]])
+            pairwise_labels = pairwise_labels.type(torch.uint8)
 
-            np_idxs = np.asarray(list(idxs))
+            rep1 = specific_representation[idxs[:, 0]]
+            rep2 = specific_representation[idxs[:, 1]]
 
-            rep1 = specific_representation[np_idxs[:, 0]]
-            rep2 = specific_representation[np_idxs[:, 1]]
-
-            s_loss = contrastive_loss(rep1, rep2, pairwise_labels.to(device))
+            s_loss = contrastive_loss(torch.tanh(rep1),
+                                      torch.tanh(rep2),
+                                      pairwise_labels)
             s_loss.backward()
             optimizer_S.step()
 
         print(f'Train Epoch: {epoch} - Specific Loss: {s_loss:.03f}')
 
+        #continue
+        if epoch % 2 == 0:
+            tsne = TSNE(n_components=2,
+                        verbose=0,
+                        perplexity=40,
+                        n_iter=250,
+                        init='pca',
+                        learning_rate=200.0,
+                        n_jobs=-1)
+            tsne_results = tsne.fit_transform(representations)
+            title = f'Specific Representation'
+            plot_utils.tsne_plot(tsne_results, labels,
+                                 f'results/representation_task{task_id}_epoch{epoch}.png',
+                                 title)
 
     specific.eval()
     specific.zero_grad()
@@ -284,8 +306,8 @@ def main(args):
     optimizer_cvae = torch.optim.Adam(itertools.chain(encoder.parameters(), decoder.parameters()), lr=args.learn_rate)
     optimizer_C = torch.optim.Adam(classifier.parameters(),
                                    lr=args.learn_rate/50)
-    optimizer_S = torch.optim.Adam(specific.parameters(),
-                                   lr=args.learn_rate/50)
+    optimizer_S = torch.optim.SGD(specific.parameters(),
+                                  lr=args.learn_rate/200)
 
     test_loaders = []
     acc_of_task_t_at_time_t = [] # acc of each task at the end of learning it
