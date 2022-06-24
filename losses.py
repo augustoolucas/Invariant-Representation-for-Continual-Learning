@@ -1,7 +1,7 @@
 import torch
 
-k_min = 0
-k_max = 1
+k_min = 0 # equal
+k_max = 1 # different
 
 
 def get_k_mtrx(input, sigma=2):
@@ -21,7 +21,7 @@ def get_ideal_k_mtrx(targets, n_classes):
     return ideal
 
 
-def contrastive(input, target, n_classes, neo=True):
+def contrastive(input, targets, n_classes, neo=True):
     """
     A contrastive-loss-like instantiation.
     """
@@ -32,7 +32,7 @@ def contrastive(input, target, n_classes, neo=True):
         get_k_mtrx(input))  # removes the main diagonal
     x = x.view([-1] + list(x.size())[2:])
 
-    y = get_ideal_k_mtrx(target, n_classes=n_classes)
+    y = get_ideal_k_mtrx(targets, n_classes=n_classes)
     y = y.view([-1] + list(y.size())[2:])
 
     if neo:
