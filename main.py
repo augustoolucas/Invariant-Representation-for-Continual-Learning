@@ -14,6 +14,7 @@ import os
 import sys
 import itertools
 import random
+import losses
 
 from model import *
 from tqdm import tqdm
@@ -187,37 +188,27 @@ def train(args, optimizer_cvae, optimizer_S, optimizer_C, encoder, decoder, spec
 
             specific_representation = specific(data.view(data.shape[0], -1))
             representations.extend(specific_representation.tolist())
-            idxs = itertools.product(list(range(data.size(0))), repeat=2)
-            idxs = list(idxs)
-            random.shuffle(idxs)
-            idxs = np.asarray(idxs)
-
-            pairwise_labels = (target[idxs[:, 0]] == target[idxs[:, 1]])
-            pairwise_labels = pairwise_labels.type(torch.uint8)
-
-            rep1 = specific_representation[idxs[:, 0]]
-            rep2 = specific_representation[idxs[:, 1]]
-
-            s_loss = contrastive_loss(torch.tanh(rep1),
-                                      torch.tanh(rep2),
-                                      pairwise_labels)
+            s_loss = losses.contrastive(torch.tanh(specific_representation),
+                                        target,
+                                        target.unique().shape[0],
+                                        neo=False)
             s_loss.backward()
             optimizer_S.step()
 
         print(f'Train Epoch: {epoch} - Specific Loss: {s_loss:.03f}')
 
         #continue
-        if epoch % 2 == 0:
+        if epoch == (args.num_epochs * 2) - 1:
             tsne = TSNE(n_components=2,
                         verbose=0,
                         perplexity=40,
-                        n_iter=250,
+                        n_iter=300,
                         init='pca',
                         learning_rate=200.0,
                         n_jobs=-1)
             tsne_results = tsne.fit_transform(representations)
             title = f'Specific Representation'
-            plot_utils.tsne_plot(tsne_results, labels,
+            plot_utils.tsne_plot(tsne_results[:1000], labels[:1000],
                                  f'results/representation_task{task_id}_epoch{epoch}.png',
                                  title)
 
@@ -306,8 +297,8 @@ def main(args):
     optimizer_cvae = torch.optim.Adam(itertools.chain(encoder.parameters(), decoder.parameters()), lr=args.learn_rate)
     optimizer_C = torch.optim.Adam(classifier.parameters(),
                                    lr=args.learn_rate/50)
-    optimizer_S = torch.optim.SGD(specific.parameters(),
-                                  lr=args.learn_rate/200)
+    optimizer_S = torch.optim.Adam(specific.parameters(),
+                                  lr=args.learn_rate/10)
 
     test_loaders = []
     acc_of_task_t_at_time_t = [] # acc of each task at the end of learning it
