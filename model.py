@@ -100,8 +100,6 @@ class Classifier(nn.Module):
                  classification_n_hidden=40):
         super(Classifier, self).__init__()
 
-        self.relu = nn.ReLU(inplace=True)
-
         self.classifier_layer = nn.Sequential(
             nn.Linear(specific_shape + latent_shape, classification_n_hidden),
             nn.ReLU(inplace=True),
@@ -110,7 +108,7 @@ class Classifier(nn.Module):
         self.output = nn.Linear(classification_n_hidden, n_classes)
 
     def forward(self, discriminative, invariant):
-        discriminative = self.relu(discriminative)
+        discriminative = torch.tanh(discriminative)
         x = self.classifier_layer(torch.cat([discriminative, invariant],
                                             dim=1))
         logits = self.output(x)

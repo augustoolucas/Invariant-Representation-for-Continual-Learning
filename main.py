@@ -188,7 +188,7 @@ def train(args, optimizer_cvae, optimizer_S, optimizer_C, encoder, decoder, spec
 
             specific_representation = specific(data.view(data.shape[0], -1))
             representations.extend(specific_representation.tolist())
-            s_loss = losses.contrastive(torch.tanh(specific_representation),
+            s_loss = losses.contrastive(specific_representation,
                                         target,
                                         target.unique().shape[0],
                                         neo=False)
