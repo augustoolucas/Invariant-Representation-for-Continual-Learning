@@ -25,7 +25,8 @@ def get_test_loader(test_dataset,test_batch_size):
     return test_loader
 
 def load_data():
-    transform = transforms.Compose([transforms.ToTensor()])
+    transform = transforms.Compose([transforms.ToTensor(),
+                                    transforms.Normalize((0.1307,), (0.3081,))])
     full_dataset = datasets.MNIST('./data', train=True, download=True, transform=transform)
     test_dataset = datasets.MNIST('./data', train=False, transform=transform)
     return full_dataset,test_dataset
