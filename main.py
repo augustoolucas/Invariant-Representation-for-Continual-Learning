@@ -172,7 +172,7 @@ def train(args, optimizer_cvae, optimizer_S, optimizer_C, encoder, decoder, spec
     ## loss ##
     pixelwise_loss = torch.nn.MSELoss(reduction='sum')
     classification_loss = nn.CrossEntropyLoss()
-    contrastive_loss = ContrastiveLoss(m=2)
+    #contrastive_loss = ContrastiveLoss(m=2)
     encoder.train()
     decoder.train()
     specific.train()
@@ -190,12 +190,12 @@ def train(args, optimizer_cvae, optimizer_S, optimizer_C, encoder, decoder, spec
             representations.extend(specific_representation.tolist())
             s_loss = losses.contrastive(specific_representation,
                                         target,
-                                        target.unique().shape[0],
-                                        neo=False)
+                                        (task_id+1)*2,
+                                        neo=True)
             s_loss.backward()
             optimizer_S.step()
 
-        print(f'Train Epoch: {epoch} - Specific Loss: {s_loss:.03f}')
+        print(f'Train Epoch: {epoch} - Specific Loss: {s_loss.item():.03f}')
 
         #continue
         if epoch == (args.num_epochs * 2) - 1:
@@ -250,9 +250,9 @@ def train(args, optimizer_cvae, optimizer_S, optimizer_C, encoder, decoder, spec
 
         print(f'Train Epoch: {epoch} - AutoEncoder Loss: {cvae_loss:.03f} - Classifer Loss: {c_loss:.03f}')
 
-        if epoch % 2 == 0 or epoch+1 == args.num_epochs:
+        if epoch % 5 == 0 or epoch+1 == args.num_epochs:
             test_acc = evaluate(encoder, specific, classifer, task_id, device, test_loader)
-        visualize(args, test_loader, encoder, decoder, epoch, args.n_classes, curr_task_labels, device)
+            visualize(args, test_loader, encoder, decoder, epoch, args.n_classes, curr_task_labels, device)
 
     return test_acc
 
@@ -297,7 +297,7 @@ def main(args):
     optimizer_cvae = torch.optim.Adam(itertools.chain(encoder.parameters(), decoder.parameters()), lr=args.learn_rate)
     optimizer_C = torch.optim.Adam(classifier.parameters(),
                                    lr=args.learn_rate/50)
-    optimizer_S = torch.optim.Adam(specific.parameters(),
+    optimizer_S = torch.optim.SGD(specific.parameters(),
                                   lr=args.learn_rate/10)
 
     test_loaders = []
