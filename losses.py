@@ -1,18 +1,23 @@
 import torch
 
-k_min = 0 # equal
-k_max = 1 # different
+k_min = 0  # equal
+k_max = 1  # different
 
 
-def get_k_mtrx(input, sigma=2):
+def get_dissimilarity_matrix(input, sigma=2, beta=0):
+    """
+    Gaussian kernel (indirect):
+      k(x, y) = exp(-||x-y||_2^2 / (2 * sigma^2));
+      x -> (k(c_1, x), ..., k(c_m, x)), c_i \in centers, \forall i.
+    """
     input = input.sub(input.unsqueeze(1)).pow(2).view(input.size(0),
                                                       input.size(0), -1)
     input = input.sum(dim=-1).mul(-1. / (2 * sigma**2)).exp()
 
-    return input
+    return input - beta
 
 
-def get_ideal_k_mtrx(targets, n_classes):
+def get_pairwise_labels_matrix(targets, n_classes):
     onehot_targets = torch.nn.functional.one_hot(targets, n_classes)
     onehot_targets = onehot_targets.float()
 
@@ -21,7 +26,23 @@ def get_ideal_k_mtrx(targets, n_classes):
     return ideal
 
 
-def contrastive(input, targets, n_classes, neo=True):
+def nmse(input, targets, n_classes, neo=False):
+    loss_fn = torch.nn.MSELoss(reduction='mean')
+
+    x = get_dissimilarity_matrix(input, beta=-1)
+    x = x.view([-1] + list(x.size())[2:])
+
+    y = get_pairwise_labels_matrix(targets, n_classes=n_classes)
+    y = y.view([-1] + list(y.size())[2:])
+
+    if neo:
+        idx = y == k_max
+        return loss_fn(x[idx], y[idx])
+
+    return -loss_fn(x, y)
+
+
+def contrastive(input, targets, n_classes, neo=False):
     """
     A contrastive-loss-like instantiation.
     """
@@ -29,13 +50,13 @@ def contrastive(input, targets, n_classes, neo=True):
     x = torch.where(
         torch.eye(len(input)).to(input.device) == 1,
         torch.tensor(-float('inf')).to(input.device),
-        get_k_mtrx(input))  # removes the main diagonal
+        get_dissimilarity_matrix(input))  # removes the main diagonal
     x = x.view([-1] + list(x.size())[2:])
 
-    y = get_ideal_k_mtrx(targets, n_classes=n_classes)
+    y = get_pairwise_labels_matrix(targets, n_classes=n_classes)
     y = y.view([-1] + list(y.size())[2:])
 
     if neo:
-        return -torch.mean(torch.exp(x[y == k_min]))
+        return torch.mean(torch.exp(x[y == k_max]))
 
-    return torch.sum(torch.exp(x[y == k_max])) / torch.sum(torch.exp(x))
+    return -torch.sum(torch.exp(x[y == k_min])) / torch.sum(torch.exp(x))
