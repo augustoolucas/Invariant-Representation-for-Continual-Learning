@@ -13,6 +13,7 @@ import glob
 import os
 import sys
 import itertools
+from sklearn.manifold import TSNE
 
 from model import *
 import data_utils
@@ -118,17 +119,19 @@ def generate_pseudo_samples(device, task_id, latent_dim, curr_task_labels, decod
         x = decoder(torch.cat([z,Variable(Tensor(x_id_one_hot))], 1))
     return x, x_id_
 
-def evaluate(encoder, classifier, task_id, device, task_test_loader):
+def evaluate(encoder, specific, classifier, task_id, device, task_test_loader):
     correct_class = 0    
     n = 0
     classifier.eval()
+    specific.eval()
     encoder.eval()
     with torch.no_grad():
         for data, target in task_test_loader:
             data, target = data.to(device), target.to(device, dtype=torch.int64)
             n += target.shape[0]
             z_representation,_,_ = encoder(data)
-            model_output = classifier(data.view(data.shape[0], -1), z_representation)
+            specific_representation = specific(data)
+            model_output = classifier(specific_representation, z_representation)
             pred_class = model_output.argmax(dim=1, keepdim=True)
             correct_class += pred_class.eq(target.view_as(pred_class)).sum().item()
 
@@ -137,14 +140,18 @@ def evaluate(encoder, classifier, task_id, device, task_test_loader):
 
     return 100. * correct_class / float(n)
 
-def train(args, optimizer_cvae, optimizer_C, encoder, decoder,classifer, train_loader, test_loader, curr_task_labels, task_id, device):
+def train(args, optimizer_cvae, optimizer_C, optimizer_S, encoder, decoder, specific, classifer, train_loader, test_loader, curr_task_labels, task_id, device):
     ## loss ##
     pixelwise_loss = torch.nn.MSELoss(reduction='sum')
-    classification_loss = nn.CrossEntropyLoss()  
+    classification_loss = nn.CrossEntropyLoss()
     encoder.train()
     decoder.train()
+    specific.train()
     classifer.train()
+
     for epoch in range(args.num_epochs):
+        representations = []
+        labels = []
         for batch_idx, (data, target) in enumerate(train_loader):
             data, target = data.to(device), target.to(device) 
             #---------------------------#
@@ -152,6 +159,7 @@ def train(args, optimizer_cvae, optimizer_C, encoder, decoder,classifer, train_l
             #---------------------------#
             encoder.zero_grad()
             decoder.zero_grad()
+            specific.zero_grad()
             classifer.zero_grad()
             y_onehot = get_categorical(target, args.n_classes).to(device)
             encoded_imgs,z_mu,z_var = encoder(data)
@@ -167,13 +175,18 @@ def train(args, optimizer_cvae, optimizer_C, encoder, decoder,classifer, train_l
             #---------------------------#
             encoder.zero_grad()
             decoder.zero_grad()
+            specific.zero_grad()
             classifer.zero_grad()
             z_representation,_,_ = encoder(data)
             # the classifier includes the specific module
-            outputs = classifer(data.view(data.shape[0], -1), z_representation.detach())
+            specific_representation = specific(data.view(data.shape[0], -1))
+            representations.extend(specific_representation.tolist())
+            labels.extend(target.tolist())
+            outputs = classifer(specific_representation, z_representation.detach())
             c_loss = classification_loss(outputs, target)
             c_loss.backward()
             optimizer_C.step()
+            optimizer_S.step()
 
             total_loss = cvae_loss.item() + c_loss.item()
             if batch_idx % args.log_interval == 0:
@@ -182,9 +195,24 @@ def train(args, optimizer_cvae, optimizer_C, encoder, decoder,classifer, train_l
                 100. * batch_idx / len(train_loader), total_loss)) 
                 print("epoch %d: total_loss %03.2f cvae_loss %03.2f rec_loss %03.2f kl_loss %03.2f c_loss %03.2f" % (epoch, total_loss, cvae_loss.item(), rec_loss.item()/len(data), kl_loss.item(),c_loss.item()))
             
-        if  epoch%2==0 or epoch+1 == args.num_epochs:
-           test_acc = evaluate(encoder, classifer, task_id, device, test_loader)
+        if epoch%2==0 or epoch+1 == args.num_epochs:
+           test_acc = evaluate(encoder, specific, classifer, task_id, device, test_loader)
            visualize(args, test_loader, encoder, decoder, epoch, args.n_classes, curr_task_labels, device)
+
+        if epoch == args.num_epochs - 1:
+            tsne = TSNE(n_components=2,
+                        verbose=0,
+                        perplexity=30,
+                        n_iter=500,
+                        n_iter_without_progress=100,
+                        init='pca',
+                        learning_rate=100.0,
+                        n_jobs=-1)
+            tsne_results = tsne.fit_transform(representations)
+            title = f'Specific Representation'
+            plot_utils.tsne_plot(tsne_results[:1000], labels[:1000],
+                                 f'results/representation_task{task_id}_epoch{epoch}.png',
+                                 title)
 
     return test_acc
 
@@ -212,16 +240,22 @@ def main(args):
     # Initialize encoder, decoder, specific, and classifier
     encoder = Encoder(img_shape, args.n_hidden_cvae, args.latent_dim)
     decoder = Decoder(img_shape, args.n_hidden_cvae, args.latent_dim, n_classes, use_label=True)
-    classifier = Classifier(img_shape, args.latent_dim, args.n_hidden_specific, args.n_hidden_classifier, n_classes)
+    specific = Specific(img_shape, args.n_hidden_specific)
+    classifier = Classifier(args.latent_dim,
+                            args.n_hidden_specific,
+                            n_classes,
+                            args.n_hidden_classifier)
     
     encoder.to(device)
     decoder.to(device)
+    specific.to(device)
     classifier.to(device)
 
     ## OPTIMIZERS ##
     optimizer_cvae = torch.optim.Adam(itertools.chain(encoder.parameters(), decoder.parameters()), lr=args.learn_rate)
     optimizer_C = torch.optim.Adam(classifier.parameters(), lr=args.learn_rate/50)
-
+    optimizer_S = torch.optim.Adam(specific.parameters(),
+                                   lr=args.learn_rate/50)
     test_loaders = []
     acc_of_task_t_at_time_t = [] # acc of each task at the end of learning it
 
@@ -245,7 +279,7 @@ def main(args):
         test_loader = data_utils.get_test_loader(test_dataset[task_id], args.test_batch_size)
         test_loaders.append(test_loader)
         # train current task
-        test_acc = train(args, optimizer_cvae, optimizer_C, encoder, decoder, classifier, train_loader, test_loader, task_labels[task_id], task_id, device)
+        test_acc = train(args, optimizer_cvae, optimizer_C, optimizer_S, encoder, decoder, specific, classifier, train_loader, test_loader, task_labels[task_id], task_id, device)
         acc_of_task_t_at_time_t.append(test_acc)
         print('\n')
         sys.stdout.flush()
@@ -255,7 +289,7 @@ def main(args):
     ACC = 0
     BWT = 0
     for task_id in range(num_tasks):
-        task_acc = evaluate(encoder, classifier, task_id, device, test_loaders[task_id])
+        task_acc = evaluate(encoder, specific, classifier, task_id, device, test_loaders[task_id])
         ACC += task_acc
         BWT += (task_acc - acc_of_task_t_at_time_t[task_id])
     ACC = ACC/len(task_labels)
