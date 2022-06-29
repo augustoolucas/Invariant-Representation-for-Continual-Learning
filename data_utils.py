@@ -5,23 +5,22 @@ import numpy as np
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import copy
-from scipy.misc import imsave
-from scipy.misc import imresize
 
 def get_train_loader(train_dataset,batch_size):
     train_loader = DataLoader(
     train_dataset,
     batch_size,
-    num_workers=0,
-    pin_memory=True, shuffle=True)
+    num_workers=8,
+    pin_memory=True,
+    shuffle=True)
     return train_loader
 
 def get_test_loader(test_dataset,test_batch_size):
     test_loader = DataLoader(
         test_dataset,
         test_batch_size,
-        shuffle=False,
-        num_workers=0,
+        shuffle=True,
+        num_workers=8,
         pin_memory=True)
     return test_loader
 
