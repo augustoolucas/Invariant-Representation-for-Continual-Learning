@@ -201,10 +201,11 @@ def train(args, optimizer_cvae, optimizer_S, optimizer_C, encoder, decoder, spec
         if epoch == (args.num_epochs * 2) - 1:
             tsne = TSNE(n_components=2,
                         verbose=0,
-                        perplexity=40,
-                        n_iter=300,
+                        perplexity=30,
+                        n_iter=500,
+                        n_iter_without_progress=100,
                         init='pca',
-                        learning_rate=200.0,
+                        learning_rate=100.0,
                         n_jobs=-1)
             tsne_results = tsne.fit_transform(representations)
             title = f'Specific Representation'
