@@ -299,7 +299,8 @@ def main(args):
     optimizer_C = torch.optim.Adam(classifier.parameters(),
                                    lr=args.learn_rate/50)
     optimizer_S = torch.optim.SGD(specific.parameters(),
-                                  lr=args.learn_rate/10)
+                                  lr=args.learn_rate/10,
+                                  momentum=0.9)
 
     test_loaders = []
     acc_of_task_t_at_time_t = [] # acc of each task at the end of learning it
