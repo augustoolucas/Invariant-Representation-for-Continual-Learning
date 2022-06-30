@@ -83,7 +83,6 @@ class Specific(nn.Module):
         # specific module
         self.specific = nn.Sequential(
             nn.Linear(int(np.prod(img_shape)), specific_size),
-            #nn.ReLU(inplace=True),
         )
 
     def forward(self, imgs):
