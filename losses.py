@@ -4,7 +4,7 @@ k_min = 0  # equal
 k_max = 1  # different
 
 
-def get_dissimilarity_matrix(input, sigma=2, beta=0):
+def get_dissimilarity_matrix(input, sigma=1, beta=-1):
     """
     Gaussian kernel (indirect):
       k(x, y) = exp(-||x-y||_2^2 / (2 * sigma^2));
@@ -42,7 +42,7 @@ def get_pairwise_labels_matrix(targets, n_classes):
 def nmse(input, targets, n_classes, neo=False):
     loss_fn = torch.nn.MSELoss(reduction='mean')
 
-    x = get_mse_dissimilarity_matrix(input, beta=0)
+    x = get_dissimilarity_matrix(input, beta=0)
     x = x.view([-1] + list(x.size())[2:])
 
     y = get_pairwise_labels_matrix(targets, n_classes=n_classes)
@@ -63,7 +63,7 @@ def contrastive(input, targets, n_classes, neo=False):
     x = torch.where(
         torch.eye(len(input)).to(input.device) == 1,
         torch.tensor(-float('inf')).to(input.device),
-        get_mse_dissimilarity_matrix(input))  # removes the main diagonal
+        get_dissimilarity_matrix(input))  # removes the main diagonal
     x = x.view([-1] + list(x.size())[2:])
 
     y = get_pairwise_labels_matrix(targets, n_classes=n_classes)
