@@ -267,9 +267,9 @@ def train(args, optimizer_cvae, optimizer_C, encoder, decoder, specific,
                         init='pca',
                         learning_rate=100.0,
                         n_jobs=2)
-            tsne_results = tsne.fit_transform(representations)
+            tsne_results = tsne.fit_transform(representations[:1000])
             title = f'Specific Representation'
-            plot_utils.tsne_plot(tsne_results, labels,
+            plot_utils.tsne_plot(tsne_results, labels[:1000],
                                  f'results/representation_epoch{epoch}.png',
                                  title)
 
