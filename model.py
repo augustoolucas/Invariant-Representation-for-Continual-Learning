@@ -83,6 +83,7 @@ class Specific(nn.Module):
         # specific module
         self.specific = nn.Sequential(
             nn.Linear(int(np.prod(img_shape)), specific_size),
+            nn.ReLU(inplace=True)
         )
 
     def forward(self, imgs):
@@ -107,7 +108,6 @@ class Classifier(nn.Module):
         self.output = nn.Linear(classification_n_hidden, n_classes)
 
     def forward(self, discriminative, invariant):
-        discriminative = torch.tanh(discriminative)
         x = self.classifier_layer(torch.cat([discriminative, invariant],
                                             dim=1))
         logits = self.output(x)
