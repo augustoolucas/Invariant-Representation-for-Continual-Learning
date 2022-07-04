@@ -256,9 +256,9 @@ def train(args, optimizer_cvae, optimizer_C, encoder, decoder, specific,
             visualize(args, test_loader, encoder, decoder, epoch,
                       args.n_classes, device)
 
-        print('Plotting TSNE')
 
-        if True or epoch == args.num_epochs - 1:
+        if False or epoch == args.num_epochs - 1:
+            print('Plotting TSNE')
             tsne = TSNE(n_components=2,
                         verbose=0,
                         perplexity=30,
