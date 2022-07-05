@@ -299,7 +299,7 @@ def main(args):
     optimizer_C = torch.optim.Adam(classifier.parameters(),
                                    lr=args.learn_rate/50)
     optimizer_S = torch.optim.SGD(specific.parameters(),
-                                  lr=args.learn_rate/10,
+                                  lr=args.learn_rate/100,
                                   momentum=0.9)
 
     test_loaders = []
